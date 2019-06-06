@@ -1,7 +1,3 @@
-//
-// Created by embed on 29.01.17.
-//
-
 #ifndef WA_CLONE_TCPSERVER_H
 #define WA_CLONE_TCPSERVER_H
 
@@ -22,9 +18,16 @@ public:
   static constexpr uint32_t maxLength = 1024;
 
   ClientSession(tcp::socket socket)
-          : m_socket(std::move(socket)), m_nickname("dave") {}
+          : m_socket(std::move(socket)), m_nickname("unknown") {}
 
-  void start() { do_read(); }
+    ~ClientSession()  { std::cerr <<  "session for "<<m_nickname<<" closed\n"; }
+
+  void start() {
+      m_nickname = "dave <" + m_socket.remote_endpoint().address().to_string() + ":"
+                            + std::to_string(m_socket.remote_endpoint().port()) + ">";
+      std::cerr << "session for " << m_nickname << " created\n"; 
+      do_read(); 
+  }
 
   void do_read()
   {
@@ -32,7 +35,7 @@ public:
     m_socket.async_read_some(boost::asio::buffer(m_input_buffer),
                             [this, self](boost::system::error_code ec, std::size_t length) {
                               if (!ec) {
-                                std::string msg(&m_input_buffer[0], length);
+                                std::string msg(m_input_buffer.data(), length);
                                   do_write(m_nickname+" you said: "+msg);
                               }
                             });
@@ -87,11 +90,11 @@ int main(int argc, char* argv[])
       return 1;
     }
 
-    boost::asio::io_service io_service;
+    boost::asio::io_context io_context;
 
-    server s(io_service, std::atoi(argv[1]));
+    server s(io_context, std::atoi(argv[1]));
 
-    io_service.run();
+    io_context.run();
   }
   catch (std::exception& e)
   {

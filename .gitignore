@@ -1,2 +1,7 @@
 build
 *~
+.idea/
+cmake-build-debug/
+communication/.idea/
+communication/build_arm/
+communication/cmake-build-debug/
