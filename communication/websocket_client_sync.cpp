@@ -22,6 +22,7 @@
 #include <cstdlib>
 #include <iostream>
 #include <string>
+#include <thread>
 
 using tcp = boost::asio::ip::tcp;               // from <boost/asio/ip/tcp.hpp>
 namespace websocket = boost::beast::websocket;  // from <boost/beast/websocket.hpp>
@@ -42,7 +43,7 @@ int main(int argc, char** argv)
         }
         auto const host = argv[1];
         auto const port = argv[2];
-        auto const text = argv[3];
+        std::string const text = argv[3];
 
         // The io_context is required for all I/O
         boost::asio::io_context ioc;
@@ -60,14 +61,34 @@ int main(int argc, char** argv)
         // Perform the websocket handshake
         ws.handshake(host, "/");
 
-        // Send the message
-        ws.write(boost::asio::buffer(std::string(text)));
-
-        // This buffer will hold the incoming message
         boost::beast::multi_buffer buffer;
 
-        // Read a message into our buffer
-        ws.read(buffer);
+        if (text == "counter") {
+
+            for (uint32_t i{0}; i<100; ++i) {
+                // Send the message
+                std::string msg {"counter "+std::to_string(i)};
+                ws.write(boost::asio::buffer(std::string(msg)));
+                // This buffer will hold the incoming message
+
+                // Read a message into our buffer
+                ws.read(buffer);
+
+                std::this_thread::sleep_for(std::chrono::milliseconds(200));
+                std::cerr << ".";
+                buffer.consume(buffer.size());
+            }
+            std::cerr << "\n";
+
+        }
+        else {
+            // Send the message
+            ws.write(boost::asio::buffer(std::string(text)));
+            // This buffer will hold the incoming message
+
+            // Read a message into our buffer
+            ws.read(buffer);
+        }
 
         // Close the WebSocket connection
         ws.close(websocket::close_code::normal);

@@ -17,6 +17,8 @@
 #include <boost/beast/websocket.hpp>
 #include <boost/asio/bind_executor.hpp>
 #include <boost/asio/strand.hpp>
+#include <unordered_map>
+#include <array>
 #include <boost/asio/ip/tcp.hpp>
 #include <algorithm>
 #include <cstdlib>
@@ -26,6 +28,9 @@
 #include <string>
 #include <thread>
 #include <vector>
+#include <regex>
+#include <boost/lexical_cast.hpp>
+#include "terminalColor.h"
 
 using tcp = boost::asio::ip::tcp;               // from <boost/asio/ip/tcp.hpp>
 namespace websocket = boost::beast::websocket;  // from <boost/beast/websocket.hpp>
@@ -39,6 +44,59 @@ fail(boost::system::error_code ec, char const* what)
     std::cerr << what << ": " << ec.message() << "\n";
 }
 
+class Lights : public std::enable_shared_from_this<Lights> {
+
+public:
+    enum class Color {
+        red,
+        blue,
+        white,
+        off
+    };
+
+private:
+    std::array<Color,3> m_light {{Color::off, Color::off, Color::off }};
+
+    std::map<Color, std::string> color {{Color::red, KRED}, {Color::blue, KBLU}, {Color::white, KWHT}, {Color::off, KWHT} };
+    std::map<std::string, Color> colorName {{"red", Color::red}, {"blue", Color::blue}, {"white", Color::white}, {"off", Color::off} };
+
+    uint32_t counter{0};
+
+    void print() {
+        std::cout << "\r " << counter << "  -  ";
+        for(auto& i : m_light) { std::cout << color[i] << (i==Color::off?"         ":" [LIGHT] ") << RST << std::flush; }
+        std::cout << "           ";
+    }
+
+public:
+    Lights() {
+    }
+
+    bool changeColor(uint32_t id, const std::string& colorString) {
+        if (colorName.find(colorString) != colorName.end()) {
+            changeColor(id, colorName[colorString]);
+            return true;
+        }
+        return false;
+    }
+
+        bool changeColor(uint32_t id, Color col) {
+        if (id < m_light.size()) {
+            m_light[id] = col;
+            print();
+            return true;
+        }
+        return false;
+    }
+
+    bool setCounter(uint32_t cnt) {
+        counter = cnt;
+        print();
+        return true;
+    }
+
+};
+
 // Echoes back all received WebSocket messages
 class session : public std::enable_shared_from_this<session>
 {
@@ -46,13 +104,15 @@ class session : public std::enable_shared_from_this<session>
     boost::asio::strand<
         boost::asio::io_context::executor_type> strand_;
     boost::beast::multi_buffer buffer_;
+    std::shared_ptr<Lights> lights_;
 
 public:
     // Take ownership of the socket
     explicit
-    session(tcp::socket socket)
+    session(tcp::socket socket, std::shared_ptr<Lights> lights)
         : ws_(std::move(socket))
         , strand_(ws_.get_executor())
+        , lights_(lights)
     {
     }
 
@@ -109,9 +169,40 @@ public:
         if(ec)
             fail(ec, "read");
 
+        std::string command {boost::beast::buffers_to_string(buffer_.data())};
+
+        uint32_t id;
+        std::string colorString;
+        uint32_t counter;
+
+        std::regex re("set (\\d*) (.*)");
+        std::smatch match;
+        if (std::regex_search(command, match, re)) {
+            try {
+                id = boost::lexical_cast<decltype(id)>(match[1].str());
+                colorString = match[2].str();
+                lights_->changeColor(id, colorString);
+            }
+            catch(boost::bad_lexical_cast& ex) {
+                std::cerr << "cannot read request\n";
+            }
+        }
+
+        std::regex re_count("counter (\\d*)");
+        std::smatch match_count;
+        if (std::regex_search(command, match_count, re_count)) {
+            try {
+                counter = boost::lexical_cast<decltype(counter)>(match_count[1].str());
+                lights_->setCounter(counter);
+            }
+            catch(boost::bad_lexical_cast& ex) {
+                std::cerr << "cannot read request <"<<command<<">\n";
+            }
+        }
+
         // need serialization to string here
         std::string msg("websocket echo: ");
-        msg.append(boost::beast::buffers_to_string(buffer_.data()));
+        msg.append(command);
 
         // Echo the message
         ws_.text(ws_.got_text());
@@ -144,6 +235,8 @@ public:
     }
 };
 
+
+
 //------------------------------------------------------------------------------
 
 // Accepts incoming connections and launches the sessions
@@ -151,6 +244,7 @@ class listener : public std::enable_shared_from_this<listener>
 {
     tcp::acceptor acceptor_;
     tcp::socket socket_;
+    std::shared_ptr<Lights> lights_;
 
 public:
     listener(
@@ -158,6 +252,7 @@ public:
         tcp::endpoint endpoint)
         : acceptor_(ioc)
         , socket_(ioc)
+        , lights_(std::make_shared<Lights>())
     {
         boost::system::error_code ec;
 
@@ -225,7 +320,7 @@ public:
         else
         {
             // Create the session and run it
-            std::make_shared<session>(std::move(socket_))->run();
+            std::make_shared<session>(std::move(socket_), lights_)->run();
         }
 
         // Accept another connection

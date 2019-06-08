@@ -6,7 +6,7 @@ set(BOOST_INCLUDEDIR /opt/boost/include)
 find_package( Threads REQUIRED)
 find_package( Boost 1.65.0 REQUIRED COMPONENTS system)
 
-set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -std=c++11 -g -O0") # -DWITH_EXEC
+set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -std=c++14 -g -O0") # -DWITH_EXEC
 
 set(SOURCE_FILES main.cpp)
 
