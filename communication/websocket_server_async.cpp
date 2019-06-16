@@ -54,8 +54,55 @@ public:
         off
     };
 
+    Lights(boost::asio::io_context& context) : m_strand(context) {
+    }
+
+    bool handleCommand(const std::string& command) {
+
+        std::regex re("set (\\d*) (.*)");
+        std::smatch match;
+        if (std::regex_search(command, match, re)) {
+            uint32_t id;
+            std::string colorString;
+            try {
+                id = boost::lexical_cast<decltype(id)>(match[1].str());
+                colorString = match[2].str();
+                if (colorName.find(colorString) != colorName.end()) {
+                    m_strand.post( [this,id, colorString]()
+                            { changeColor(id, colorName[colorString]); }
+                    );
+                    return true;
+                }
+            }
+            catch(boost::bad_lexical_cast& ex) {
+                std::cerr << "cannot read request\n";
+            }
+            return false;
+        }
+
+        std::regex re_count("counter (\\d*)");
+        std::smatch match_count;
+        if (std::regex_search(command, match_count, re_count)) {
+            uint32_t counter;
+            try {
+                counter = boost::lexical_cast<decltype(counter)>(match_count[1].str());
+                m_strand.post([this, counter]()
+                              { setCounter(counter);}
+                );
+                return true;
+            }
+            catch(boost::bad_lexical_cast& ex) {
+                std::cerr << "cannot read request <"<<command<<">\n";
+            }
+            return false;
+        }
+
+    }
+
 private:
     std::array<Color, 3> m_light{{Color::off, Color::off, Color::off}};
+
+    boost::asio::io_context::strand m_strand;
 
     std::map<Color, std::string> color{{Color::red,   KRED},
                                        {Color::blue,  KBLU},
@@ -66,26 +113,14 @@ private:
                                            {"white", Color::white},
                                            {"off",   Color::off}};
 
-    uint32_t counter{0};
+    uint32_t m_counter{0};
 
     void print() {
-        std::cout << "\r " << counter << "  -  ";
+        std::cout << "\r " << m_counter << "  -  ";
         for (auto &i : m_light) {
             std::cout << color[i] << (i == Color::off ? "         " : " [LIGHT] ") << RST << std::flush;
         }
         std::cout << "           ";
-    }
-
-public:
-    Lights() {
-    }
-
-    bool changeColor(uint32_t id, const std::string &colorString) {
-        if (colorName.find(colorString) != colorName.end()) {
-            changeColor(id, colorName[colorString]);
-            return true;
-        }
-        return false;
     }
 
     bool changeColor(uint32_t id, Color col) {
@@ -98,7 +133,7 @@ public:
     }
 
     bool setCounter(uint32_t cnt) {
-        counter = cnt;
+        m_counter = cnt;
         print();
         return true;
     }
@@ -166,63 +201,38 @@ public:
     void
     on_read(
         boost::system::error_code ec,
-        std::size_t bytes_transferred)
-    {
+        std::size_t bytes_transferred) {
         boost::ignore_unused(bytes_transferred);
 
         // This indicates that the session was closed
-        if(ec == websocket::error::closed)
+        if (ec == websocket::error::closed)
             return;
 
-        if(ec)
+        if (ec)
             fail(ec, "read");
 
-        std::string command {boost::beast::buffers_to_string(buffer_.data())};
+        std::string command{boost::beast::buffers_to_string(buffer_.data())};
 
-        uint32_t id;
-        std::string colorString;
-        uint32_t counter;
+        bool wasSpecialCommand = lights_->handleCommand(command);
 
-        std::regex re("set (\\d*) (.*)");
-        std::smatch match;
-        if (std::regex_search(command, match, re)) {
-            try {
-                id = boost::lexical_cast<decltype(id)>(match[1].str());
-                colorString = match[2].str();
-                lights_->changeColor(id, colorString);
-            }
-            catch(boost::bad_lexical_cast& ex) {
-                std::cerr << "cannot read request\n";
-            }
+        std::string msg;
+        if (wasSpecialCommand) {
+            msg = "thank you for your information: " + command;
+        } else {
+            msg = "websocket echo: " + command;
         }
-
-        std::regex re_count("counter (\\d*)");
-        std::smatch match_count;
-        if (std::regex_search(command, match_count, re_count)) {
-            try {
-                counter = boost::lexical_cast<decltype(counter)>(match_count[1].str());
-                lights_->setCounter(counter);
-            }
-            catch(boost::bad_lexical_cast& ex) {
-                std::cerr << "cannot read request <"<<command<<">\n";
-            }
-        }
-
-        // need serialization to string here
-        std::string msg("websocket echo: ");
-        msg.append(command);
 
         // Echo the message
         ws_.text(ws_.got_text());
         ws_.async_write(
-            boost::asio::buffer(std::string(msg)),
-            boost::asio::bind_executor(
-                strand_,
-                std::bind(
-                    &session::on_write,
-                    shared_from_this(),
-                    std::placeholders::_1,
-                    std::placeholders::_2)));
+                boost::asio::buffer(std::string(msg)),
+                boost::asio::bind_executor(
+                        strand_,
+                        std::bind(
+                                &session::on_write,
+                                shared_from_this(),
+                                std::placeholders::_1,
+                                std::placeholders::_2)));
     }
 
     void
@@ -260,7 +270,7 @@ public:
         tcp::endpoint endpoint)
         : acceptor_(ioc)
         , socket_(ioc)
-        , lights_(std::make_shared<Lights>())
+        , lights_(std::make_shared<Lights>(ioc))
     {
         boost::system::error_code ec;
 
