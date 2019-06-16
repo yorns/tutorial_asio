@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 2.8)
-project(wa_clone)
+project(asioExamples)
 
 set(BOOST_INCLUDEDIR /opt/boost/include)
 
@@ -39,6 +39,10 @@ add_executable(httpRestClient http_client_sync.cpp)
 target_link_libraries(httpRestClient ${Boost_LIBRARIES} Threads::Threads)
 target_include_directories(httpRestClient PUBLIC ${BOOST_INCLUDEDIR} )
 
+add_executable(httpRestClientAsync http_client_async.cpp)
+target_link_libraries(httpRestClientAsync ${Boost_LIBRARIES} Threads::Threads)
+target_include_directories(httpRestClientAsync PUBLIC ${BOOST_INCLUDEDIR} )
+
 add_executable(websocketServer websocket_server_async.cpp)
 target_link_libraries(websocketServer ${Boost_LIBRARIES} Threads::Threads)
 target_include_directories(websocketServer PUBLIC ${BOOST_INCLUDEDIR} )
@@ -46,6 +50,12 @@ target_include_directories(websocketServer PUBLIC ${BOOST_INCLUDEDIR} )
 add_executable(websocketClient websocket_client_sync.cpp)
 target_link_libraries(websocketClient ${Boost_LIBRARIES} Threads::Threads)
 target_include_directories(websocketClient PUBLIC ${BOOST_INCLUDEDIR} )
+
+add_executable(xorMe xorMe.cpp)
+
+add_executable(beastHttpServer beast_http_server.cpp)
+target_link_libraries(beastHttpServer ${Boost_LIBRARIES} Threads::Threads)
+target_include_directories(beastHttpServer PUBLIC ${BOOST_INCLUDEDIR} )
 
 #add_executable(cmdLine CommandLine.cpp KeyHit.cpp KeyHit.h)
 #target_link_libraries(cmdLine boost_system pthread)

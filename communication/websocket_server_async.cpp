@@ -55,16 +55,24 @@ public:
     };
 
 private:
-    std::array<Color,3> m_light {{Color::off, Color::off, Color::off }};
+    std::array<Color, 3> m_light{{Color::off, Color::off, Color::off}};
 
-    std::map<Color, std::string> color {{Color::red, KRED}, {Color::blue, KBLU}, {Color::white, KWHT}, {Color::off, KWHT} };
-    std::map<std::string, Color> colorName {{"red", Color::red}, {"blue", Color::blue}, {"white", Color::white}, {"off", Color::off} };
+    std::map<Color, std::string> color{{Color::red,   KRED},
+                                       {Color::blue,  KBLU},
+                                       {Color::white, KWHT},
+                                       {Color::off,   KWHT}};
+    std::map<std::string, Color> colorName{{"red",   Color::red},
+                                           {"blue",  Color::blue},
+                                           {"white", Color::white},
+                                           {"off",   Color::off}};
 
     uint32_t counter{0};
 
     void print() {
         std::cout << "\r " << counter << "  -  ";
-        for(auto& i : m_light) { std::cout << color[i] << (i==Color::off?"         ":" [LIGHT] ") << RST << std::flush; }
+        for (auto &i : m_light) {
+            std::cout << color[i] << (i == Color::off ? "         " : " [LIGHT] ") << RST << std::flush;
+        }
         std::cout << "           ";
     }
 
@@ -72,7 +80,7 @@ public:
     Lights() {
     }
 
-    bool changeColor(uint32_t id, const std::string& colorString) {
+    bool changeColor(uint32_t id, const std::string &colorString) {
         if (colorName.find(colorString) != colorName.end()) {
             changeColor(id, colorName[colorString]);
             return true;
@@ -80,7 +88,7 @@ public:
         return false;
     }
 
-        bool changeColor(uint32_t id, Color col) {
+    bool changeColor(uint32_t id, Color col) {
         if (id < m_light.size()) {
             m_light[id] = col;
             print();

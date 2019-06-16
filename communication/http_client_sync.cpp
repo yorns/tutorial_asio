@@ -68,27 +68,39 @@ int main(int argc, char** argv)
         // Make the connection on the IP address we get from a lookup
         boost::asio::connect(socket, results.begin(), results.end());
 
-        // Set up an HTTP GET request message
-        http::request<http::string_body> req{http::verb::get, target, version};
-        req.set(http::field::host, host);
-        req.set(http::field::user_agent, BOOST_BEAST_VERSION_STRING);
+        while (true) {
+            std::string target;
+            std::cout << "target: ";
+            std::cin >> target;
 
-        // Send the HTTP request to the remote host
-        http::write(socket, req);
+            if (target == "end")
+                break;
 
-        // This buffer is used for reading and must be persisted
-        boost::beast::flat_buffer buffer;
+            // Set up an HTTP GET request message
+            http::request<http::empty_body> req{http::verb::get, target, version};
+            req.set(http::field::host, host);
+            req.set(http::field::user_agent, BOOST_BEAST_VERSION_STRING);
+            req.keep_alive(true);
 
-        // Declare a container to hold the response
-        http::response<http::dynamic_body> res;
+            // Send the HTTP request to the remote host
+            http::write(socket, req);
 
-        // Receive the HTTP response
-        http::read(socket, buffer, res);
+            // This buffer is used for reading and must be persisted
+            boost::beast::flat_buffer buffer;
 
-        // Write the message to standard out
-        std::cout << "Full message returned:\n" << res << std::endl;
-        std::cout << "Only body content:\n" << boost::beast::buffers_to_string(res.body().data()) << std::endl;
+            // Declare a container to hold the response
+            //http::response<http::dynamic_body> res;
+            http::response<http::string_body> res;
 
+            // Receive the HTTP response
+            http::read(socket, buffer, res);
+
+            // Write the message to standard out
+            std::cout << "Full message returned:\n" << res << std::endl;
+//        std::cout << "Only body content:\n" << boost::beast::buffers_to_string(res.body().data()) << std::endl;
+            std::cout << "Only body content:\n" << res.body() << std::endl;
+
+        }
         // Gracefully close the socket
         boost::system::error_code ec;
         socket.shutdown(tcp::socket::shutdown_both, ec);
