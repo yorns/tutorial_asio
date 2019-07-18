@@ -41,19 +41,18 @@ int main(int argc, char** argv)
     try
     {
         // Check command line arguments.
-        if(argc != 4 && argc != 5)
+        if(argc != 3 && argc != 4)
         {
             std::cerr <<
-                "Usage: http-client-sync <host> <port> <target> [<HTTP version: 1.0 or 1.1(default)>]\n" <<
+                "Usage: http-client-sync <host> <port> [<HTTP version: 1.0 or 1.1(default)>]\n" <<
                 "Example:\n" <<
-                "    http-client-sync www.example.com 80 /\n" <<
-                "    http-client-sync www.example.com 80 / 1.0\n";
+                "    " << argv[0] << " www.example.com 80\n" <<
+                "    " << argv[0] << " www.example.com 80 1.0\n";
             return EXIT_FAILURE;
         }
         auto const host = argv[1];
         auto const port = argv[2];
-        auto const target = argv[3];
-        int version = argc == 5 && !std::strcmp("1.0", argv[4]) ? 10 : 11;
+        int version = argc == 4 && !std::strcmp("1.0", argv[3]) ? 10 : 11;
 
         // The io_context is required for all I/O
         boost::asio::io_context ioc;
@@ -68,8 +67,12 @@ int main(int argc, char** argv)
         // Make the connection on the IP address we get from a lookup
         boost::asio::connect(socket, results.begin(), results.end());
 
+        std::string target;
+
+        // This buffer is used for reading and must be persisted
+        boost::beast::flat_buffer buffer;
+
         while (true) {
-            std::string target;
             std::cout << "target: ";
             std::cin >> target;
 
@@ -85,9 +88,6 @@ int main(int argc, char** argv)
             // Send the HTTP request to the remote host
             http::write(socket, req);
 
-            // This buffer is used for reading and must be persisted
-            boost::beast::flat_buffer buffer;
-
             // Declare a container to hold the response
             //http::response<http::dynamic_body> res;
             http::response<http::string_body> res;
@@ -96,8 +96,8 @@ int main(int argc, char** argv)
             http::read(socket, buffer, res);
 
             // Write the message to standard out
-            std::cout << "Full message returned:\n" << res << std::endl;
-//        std::cout << "Only body content:\n" << boost::beast::buffers_to_string(res.body().data()) << std::endl;
+//            std::cout << "Full message returned:\n" << res << std::endl;
+//            std::cout << "Only body content:\n" << boost::beast::buffers_to_string(res.body().data()) << std::endl;
             std::cout << "Only body content:\n" << res.body() << std::endl;
 
         }

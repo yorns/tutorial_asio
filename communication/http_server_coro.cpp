@@ -9,20 +9,18 @@
 
 //------------------------------------------------------------------------------
 //
-// Example: HTTP server, asynchronous
+// Example: HTTP server, coroutine
 //
 //------------------------------------------------------------------------------
 
 #include <boost/beast/core.hpp>
 #include <boost/beast/http.hpp>
 #include <boost/beast/version.hpp>
-#include <boost/asio/bind_executor.hpp>
 #include <boost/asio/ip/tcp.hpp>
-#include <boost/asio/strand.hpp>
+#include <boost/asio/spawn.hpp>
 #include <boost/config.hpp>
 #include <algorithm>
 #include <cstdlib>
-#include <functional>
 #include <iostream>
 #include <memory>
 #include <string>
@@ -147,25 +145,6 @@ handle_request(
         return res;
     };
 
-    if ( req.method() == http::verb::post) {
-
-        //std::string body = boost::beast::buffers_to_string(req.body().data());
-        std::cout << "POST <"<<req.target() << ">\nBODY: "<< req.body() << " \n";
-
-        http::string_body::value_type ret_body{"[\"ok\"]"};
-        auto const size = ret_body.size();
-
-        http::response<http::string_body> res{
-                std::piecewise_construct,
-                std::make_tuple(std::move(ret_body)),
-                std::make_tuple(http::status::ok, req.version())};
-        res.set(http::field::server, BOOST_BEAST_VERSION_STRING);
-        res.set(http::field::content_type, "application/json");
-        res.content_length(size);
-        res.keep_alive(req.keep_alive());
-        return send(std::move(res));
-    }
-
     // Make sure we can handle the method
     if( req.method() != http::verb::get &&
         req.method() != http::verb::head)
@@ -218,9 +197,6 @@ handle_request(
     res.set(http::field::content_type, mime_type(path));
     res.content_length(size);
     res.keep_alive(req.keep_alive());
-
-//    sleep(20);
-
     return send(std::move(res));
 }
 
@@ -233,246 +209,137 @@ fail(boost::system::error_code ec, char const* what)
     std::cerr << what << ": " << ec.message() << "\n";
 }
 
-// Handles an HTTP server connection
-class session : public std::enable_shared_from_this<session>
+// This is the C++11 equivalent of a generic lambda.
+// The function object is used to send an HTTP message.
+template<class Stream>
+struct send_lambda
 {
-    // This is the C++11 equivalent of a generic lambda.
-    // The function object is used to send an HTTP message.
-    struct send_lambda
-    {
-        session& self_;
+    Stream& stream_;
+    bool& close_;
+    boost::system::error_code& ec_;
+    boost::asio::yield_context yield_;
 
-        explicit
-        send_lambda(session& self)
-            : self_(self)
-        {
-        }
-
-        template<bool isRequest, class Body, class Fields>
-        void
-        operator()(http::message<isRequest, Body, Fields>&& msg) const
-        {
-            // The lifetime of the message has to extend
-            // for the duration of the async operation so
-            // we use a shared_ptr to manage it.
-            auto sp = std::make_shared<
-                http::message<isRequest, Body, Fields>>(std::move(msg));
-
-            // Store a type-erased version of the shared
-            // pointer in the class to keep it alive.
-            self_.res_ = sp;
-
-            // Write the response
-            http::async_write(
-                self_.socket_,
-                *sp,
-                boost::asio::bind_executor(
-                    self_.strand_,
-                    std::bind(
-                        &session::on_write,
-                        self_.shared_from_this(),
-                        std::placeholders::_1,
-                        std::placeholders::_2,
-                        sp->need_eof())));
-        }
-    };
-
-    tcp::socket socket_;
-    boost::asio::strand<
-        boost::asio::io_context::executor_type> strand_;
-    boost::beast::flat_buffer buffer_;
-    std::shared_ptr<std::string const> doc_root_;
-    http::request<http::string_body> req_;
-    std::shared_ptr<void> res_;
-    send_lambda lambda_;
-
-public:
-    // Take ownership of the socket
     explicit
-    session(
-        tcp::socket socket,
-        std::shared_ptr<std::string const> const& doc_root)
-        : socket_(std::move(socket))
-        , strand_(socket_.get_executor())
-        , doc_root_(doc_root)
-        , lambda_(*this)
+    send_lambda(
+        Stream& stream,
+        bool& close,
+        boost::system::error_code& ec,
+        boost::asio::yield_context yield)
+        : stream_(stream)
+        , close_(close)
+        , ec_(ec)
+        , yield_(yield)
     {
     }
 
-    // Start the asynchronous operation
+    template<bool isRequest, class Body, class Fields>
     void
-    run()
+    operator()(http::message<isRequest, Body, Fields>&& msg) const
     {
-        do_read();
+        // Determine if we should close the connection after
+        close_ = msg.need_eof();
+
+        // We need the serializer here because the serializer requires
+        // a non-const file_body, and the message oriented version of
+        // http::write only works with const messages.
+        http::serializer<isRequest, Body, Fields> sr{msg};
+        http::async_write(stream_, sr, yield_[ec_]);
     }
+};
 
-    void
-    do_read()
+// Handles an HTTP server connection
+void
+do_session(
+    tcp::socket& socket,
+    std::shared_ptr<std::string const> const& doc_root,
+    boost::asio::yield_context yield)
+{
+    bool close = false;
+    boost::system::error_code ec;
+
+    // This buffer is required to persist across reads
+    boost::beast::flat_buffer buffer;
+
+    // This lambda is used to send messages
+    send_lambda<tcp::socket> lambda{socket, close, ec, yield};
+
+    for(;;)
     {
-        // Make the request empty before reading,
-        // otherwise the operation behavior is undefined.
-        req_ = {};
-
         // Read a request
-        http::async_read(socket_, buffer_, req_,
-            boost::asio::bind_executor(
-                strand_,
-                std::bind(
-                    &session::on_read,
-                    shared_from_this(),
-                    std::placeholders::_1,
-                    std::placeholders::_2)));
-    }
-
-    void
-    on_read(
-        boost::system::error_code ec,
-        std::size_t bytes_transferred)
-    {
-        boost::ignore_unused(bytes_transferred);
-
-        // This means they closed the connection
+        http::request<http::string_body> req;
+        http::async_read(socket, buffer, req, yield[ec]);
         if(ec == http::error::end_of_stream)
-            return do_close();
-
+            break;
         if(ec)
             return fail(ec, "read");
 
         // Send the response
-        handle_request(*doc_root_, std::move(req_), lambda_);
-    }
-
-    void
-    on_write(
-        boost::system::error_code ec,
-        std::size_t bytes_transferred,
-        bool close)
-    {
-        boost::ignore_unused(bytes_transferred);
-
+        handle_request(*doc_root, std::move(req), lambda);
         if(ec)
             return fail(ec, "write");
-
         if(close)
         {
             // This means we should close the connection, usually because
             // the response indicated the "Connection: close" semantic.
-            return do_close();
+            break;
         }
-
-        // We're done with the response so delete it
-        res_ = nullptr;
-
-        // Read another request
-        do_read();
     }
 
-    void
-    do_close()
-    {
-        // Send a TCP shutdown
-        boost::system::error_code ec;
-        socket_.shutdown(tcp::socket::shutdown_send, ec);
+    // Send a TCP shutdown
+    socket.shutdown(tcp::socket::shutdown_send, ec);
 
-        // At this point the connection is closed gracefully
-    }
-};
+    // At this point the connection is closed gracefully
+}
 
 //------------------------------------------------------------------------------
 
 // Accepts incoming connections and launches the sessions
-class listener : public std::enable_shared_from_this<listener>
+void
+do_listen(
+    boost::asio::io_context& ioc,
+    tcp::endpoint endpoint,
+    std::shared_ptr<std::string const> const& doc_root,
+    boost::asio::yield_context yield)
 {
-    tcp::acceptor acceptor_;
-    tcp::socket socket_;
-    std::shared_ptr<std::string const> doc_root_;
+    boost::system::error_code ec;
 
-public:
-    listener(
-        boost::asio::io_context& ioc,
-        tcp::endpoint endpoint,
-        std::shared_ptr<std::string const> const& doc_root)
-        : acceptor_(ioc)
-        , socket_(ioc)
-        , doc_root_(doc_root)
+    // Open the acceptor
+    tcp::acceptor acceptor(ioc);
+    acceptor.open(endpoint.protocol(), ec);
+    if(ec)
+        return fail(ec, "open");
+
+    // Allow address reuse
+    acceptor.set_option(boost::asio::socket_base::reuse_address(true), ec);
+    if(ec)
+        return fail(ec, "set_option");
+
+    // Bind to the server address
+    acceptor.bind(endpoint, ec);
+    if(ec)
+        return fail(ec, "bind");
+
+    // Start listening for connections
+    acceptor.listen(boost::asio::socket_base::max_listen_connections, ec);
+    if(ec)
+        return fail(ec, "listen");
+
+    for(;;)
     {
-        boost::system::error_code ec;
-
-        // Open the acceptor
-        acceptor_.open(endpoint.protocol(), ec);
+        tcp::socket socket(ioc);
+        acceptor.async_accept(socket, yield[ec]);
         if(ec)
-        {
-            fail(ec, "open");
-            return;
-        }
-
-        // Allow address reuse
-        acceptor_.set_option(boost::asio::socket_base::reuse_address(true), ec);
-        if(ec)
-        {
-            fail(ec, "set_option");
-            return;
-        }
-
-        // Bind to the server address
-        acceptor_.bind(endpoint, ec);
-        if(ec)
-        {
-            fail(ec, "bind");
-            return;
-        }
-
-        // Start listening for connections
-        acceptor_.listen(
-            boost::asio::socket_base::max_listen_connections, ec);
-        if(ec)
-        {
-            fail(ec, "listen");
-            return;
-        }
-    }
-
-    // Start accepting incoming connections
-    void
-    run()
-    {
-        if(! acceptor_.is_open())
-            return;
-        do_accept();
-    }
-
-    void
-    do_accept()
-    {
-        acceptor_.async_accept(
-            socket_,
-            std::bind(
-                &listener::on_accept,
-                shared_from_this(),
-                std::placeholders::_1));
-    }
-
-    void
-    on_accept(boost::system::error_code ec)
-    {
-        if(ec)
-        {
             fail(ec, "accept");
-        }
         else
-        {
-            // Create the session and run it
-            std::make_shared<session>(
-                std::move(socket_),
-                doc_root_)->run();
-        }
-
-        // Accept another connection
-        do_accept();
+            boost::asio::spawn(
+                acceptor.get_executor().context(),
+                std::bind(
+                    &do_session,
+                    std::move(socket),
+                    doc_root,
+                    std::placeholders::_1));
     }
-};
-
-//------------------------------------------------------------------------------
+}
 
 int main(int argc, char* argv[])
 {
@@ -480,9 +347,9 @@ int main(int argc, char* argv[])
     if (argc != 5)
     {
         std::cerr <<
-            "Usage: "<<argv[0]<<" <address> <port> <doc_root> <threads>\n" <<
+            "Usage: http-server-coro <address> <port> <doc_root> <threads>\n" <<
             "Example:\n" <<
-            "    "<<argv[0]<<" 0.0.0.0 8080 . 1\n";
+            "    http-server-coro 0.0.0.0 8080 . 1\n";
         return EXIT_FAILURE;
     }
     auto const address = boost::asio::ip::make_address(argv[1]);
@@ -493,11 +360,14 @@ int main(int argc, char* argv[])
     // The io_context is required for all I/O
     boost::asio::io_context ioc{threads};
 
-    // Create and launch a listening port
-    std::make_shared<listener>(
-        ioc,
-        tcp::endpoint{address, port},
-        doc_root)->run();
+    // Spawn a listening port
+    boost::asio::spawn(ioc,
+        std::bind(
+            &do_listen,
+            std::ref(ioc),
+            tcp::endpoint{address, port},
+            doc_root,
+            std::placeholders::_1));
 
     // Run the I/O service on the requested number of threads
     std::vector<std::thread> v;

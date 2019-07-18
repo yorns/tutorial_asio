@@ -208,7 +208,7 @@ int main(int argc, char** argv)
 
     // Capture SIGINT and SIGTERM to perform a clean shutdown
     signals.async_wait(
-            [ses_signal](beast::error_code const&, int signal)
+            [ses_signal](boost::system::error_code const&, int signal)
             {
                 if (!ses_signal.expired())
                     ses_signal.lock()->on_stop(signal);

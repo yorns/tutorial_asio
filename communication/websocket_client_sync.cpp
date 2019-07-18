@@ -65,7 +65,7 @@ int main(int argc, char** argv)
 
         if (text == "counter") {
 
-            for (uint32_t i{0}; i<100; ++i) {
+            for (uint32_t i{0}; i<255; ++i) {
                 // Send the message
                 std::string msg {"counter "+std::to_string(i)};
                 ws.write(boost::asio::buffer(std::string(msg)));

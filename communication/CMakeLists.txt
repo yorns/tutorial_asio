@@ -4,7 +4,7 @@ project(asioExamples)
 set(BOOST_INCLUDEDIR /opt/boost/include)
 
 find_package( Threads REQUIRED)
-find_package( Boost 1.65.0 REQUIRED COMPONENTS system)
+find_package( Boost 1.65.0 REQUIRED COMPONENTS system coroutine  )
 
 set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -std=c++14 -g -O0") # -DWITH_EXEC
 
@@ -39,6 +39,10 @@ add_executable(httpRestClient http_client_sync.cpp)
 target_link_libraries(httpRestClient ${Boost_LIBRARIES} Threads::Threads)
 target_include_directories(httpRestClient PUBLIC ${BOOST_INCLUDEDIR} )
 
+add_executable(httpRestClient2 http_client_coro2.cpp)
+target_link_libraries(httpRestClient2 ${Boost_LIBRARIES} Threads::Threads)
+target_include_directories(httpRestClient2 PUBLIC ${BOOST_INCLUDEDIR} )
+
 add_executable(httpRestClientAsync http_client_async.cpp)
 target_link_libraries(httpRestClientAsync ${Boost_LIBRARIES} Threads::Threads)
 target_include_directories(httpRestClientAsync PUBLIC ${BOOST_INCLUDEDIR} )
@@ -56,6 +60,10 @@ add_executable(xorMe xorMe.cpp)
 add_executable(beastHttpServer beast_http_server.cpp)
 target_link_libraries(beastHttpServer ${Boost_LIBRARIES} Threads::Threads)
 target_include_directories(beastHttpServer PUBLIC ${BOOST_INCLUDEDIR} )
+
+add_executable(beastHttpServer2 http_server_coro.cpp)
+target_link_libraries(beastHttpServer2 ${Boost_LIBRARIES} Threads::Threads)
+target_include_directories(beastHttpServer2 PUBLIC ${BOOST_INCLUDEDIR} )
 
 #add_executable(cmdLine CommandLine.cpp KeyHit.cpp KeyHit.h)
 #target_link_libraries(cmdLine boost_system pthread)
