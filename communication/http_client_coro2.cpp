@@ -112,10 +112,10 @@ int main(int argc, char** argv)
     if(argc != 4 && argc != 5)
     {
         std::cerr <<
-            "Usage: http-client-coro <host> <port> <target> [<HTTP version: 1.0 or 1.1(default)>]\n" <<
+            "Usage: " << argv[0] << " <host> <port> <target> [<HTTP version: 1.0 or 1.1(default)>]\n" <<
             "Example:\n" <<
-            "    http-client-coro www.example.com 80 /\n" <<
-            "    http-client-coro www.example.com 80 / 1.0\n";
+            "    " << argv[0] << " www.example.com 80 /\n" <<
+            "    " << argv[0] << " www.example.com 80 / 1.0\n";
         return EXIT_FAILURE;
     }
     auto const host = argv[1];

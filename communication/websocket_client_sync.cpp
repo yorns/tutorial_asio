@@ -36,9 +36,9 @@ int main(int argc, char** argv)
         if(argc != 4)
         {
             std::cerr <<
-                "Usage: websocket-client-sync <host> <port> <text>\n" <<
+                "Usage: " << argv[0] << " <host> <port> <text>\n" <<
                 "Example:\n" <<
-                "    websocket-client-sync echo.websocket.org 80 \"Hello, world!\"\n";
+                "    " << argv[0] << " echo.websocket.org 80 \"Hello, world!\"\n";
             return EXIT_FAILURE;
         }
         auto const host = argv[1];

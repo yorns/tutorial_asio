@@ -187,8 +187,8 @@ int main(int argc, char** argv)
         std::cerr <<
             "Usage: http-client-async <host> <port> <target> [<HTTP version: 1.0 or 1.1(default)>]\n" <<
             "Example:\n" <<
-            "    http-client-async www.example.com 80 /\n" <<
-            "    http-client-async www.example.com 80 / 1.0\n";
+            "    " << argv[0] << " www.example.com 80 /\n" <<
+            "    " << argv[0] << " www.example.com 80 / 1.0\n";
         return EXIT_FAILURE;
     }
     auto const host = argv[1];

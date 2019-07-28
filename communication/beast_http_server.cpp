@@ -28,6 +28,7 @@
 #include <string>
 #include <thread>
 #include <vector>
+#include "json.hpp"
 
 using tcp = boost::asio::ip::tcp;       // from <boost/asio/ip/tcp.hpp>
 namespace http = boost::beast::http;    // from <boost/beast/http.hpp>
@@ -181,6 +182,22 @@ handle_request(
     std::string path = path_cat(doc_root, req.target());
     if(req.target().back() == '/')
         path.append("index.html");
+
+    if (path == "./table") {
+        nlohmann::json table;
+        nlohmann::json entry1 = {"number1", "number2", "number3"};
+        table.push_back(entry1);
+        nlohmann::json entry2 = {"lion", "elephant", "tiger"};
+        table.push_back(entry2);
+
+        http::response<http::string_body> res{http::status::ok, req.version()};
+        res.set(http::field::server, BOOST_BEAST_VERSION_STRING);
+        res.set(http::field::content_type, "application/json");
+        res.keep_alive(req.keep_alive());
+        res.body() = table.dump();
+        return send(std::move(res));
+
+    }
 
     // Attempt to open the file
     boost::beast::error_code ec;

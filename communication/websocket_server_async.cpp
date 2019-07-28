@@ -354,9 +354,9 @@ int main(int argc, char* argv[])
     if (argc != 4)
     {
         std::cerr <<
-            "Usage: websocket-server-async <address> <port> <threads>\n" <<
+            "Usage: " << argv[0] << " <address> <port> <threads>\n" <<
             "Example:\n" <<
-            "    websocket-server-async 0.0.0.0 8080 1\n";
+            "    " << argv[0] << " 0.0.0.0 8080 1\n";
         return EXIT_FAILURE;
     }
     auto const address = boost::asio::ip::make_address(argv[1]);

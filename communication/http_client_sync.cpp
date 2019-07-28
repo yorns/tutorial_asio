@@ -31,6 +31,7 @@
 #include <cstdlib>
 #include <iostream>
 #include <string>
+#include "json.hpp"
 
 using tcp = boost::asio::ip::tcp;       // from <boost/asio/ip/tcp.hpp>
 namespace http = boost::beast::http;    // from <boost/beast/http.hpp>
@@ -95,10 +96,37 @@ int main(int argc, char** argv)
             // Receive the HTTP response
             http::read(socket, buffer, res);
 
+            std::cout << "server: " << res[http::field::server] <<"\n";
             // Write the message to standard out
 //            std::cout << "Full message returned:\n" << res << std::endl;
-//            std::cout << "Only body content:\n" << boost::beast::buffers_to_string(res.body().data()) << std::endl;
-            std::cout << "Only body content:\n" << res.body() << std::endl;
+//            std::cout << "Only body content:\n" << boost::beast::buffers_to_string(res.body()) << std::endl;
+//            std::cout << "Only body content:\n" << res.body() << std::endl;
+            std::string jsonData = res.body().data();
+            nlohmann::json json;
+            try {
+                json = nlohmann::json::parse(jsonData);
+            } catch (nlohmann::json::exception ex) {
+                std::cout << "cannot pass string because: "<<ex.what() <<"\nreturn data was:\n"<<jsonData<<"\n";
+            }
+            //std::cout << json.dump(4) << std::endl;
+            //json["main"]["temp"];
+            //std::cout << "temp: " << temp - 273.15 << std::endl;
+
+            try {
+                uint32_t temp = json.at("main").at("temp");
+                std::cout << "temp: " << temp - 273.15 << std::endl;
+            } catch (nlohmann::json::exception ex) {
+                std::cout << "no weather call\n";
+            }
+
+            try {
+                std::string title = json.at("Title");
+                std::string description = json.at("Plot");
+                std::cerr << "Titel: "<< title << "\n";
+                std::cerr << "Description: " << description << "\n";
+            } catch (nlohmann::json::exception ex) {
+                std::cout << "no movie call\n";
+            }
 
         }
         // Gracefully close the socket
